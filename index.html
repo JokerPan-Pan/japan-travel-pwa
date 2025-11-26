@@ -1,0 +1,973 @@
+<!DOCTYPE ahtml>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>日本旅程手帳 (文青版)</title>
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+        
+        /* 文青風格：暖白色背景，柔和色彩，大量留白 */
+        body { 
+            font-family: 'Noto Sans TC', sans-serif; 
+            background-color: #F8F6F4; /* 暖白色 */
+            color: #374151; /* 深灰色文本 */
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .card-bg { background-color: #FFFFFF; /* 純白色卡片 */ }
+        .soft-accent { color: #58a4b0; /* 柔和的藍綠色 */ }
+        .soft-border { border-color: #D1D5DB; /* 淺灰色邊框 */ }
+        
+        /* Tab Bar 樣式 */
+        .nav-active { color: #58a4b0; border-top: 2px solid #58a4b0; }
+        .nav-inactive { color: #9CA3AF; }
+        
+        /* 導遊亮顯標籤 (柔和色系) */
+        .tag-important { color: #F59E0B; font-weight: 500; /* 橙色：重要代號 */ }
+        .tag-food { color: #EF4444; font-weight: 500; /* 紅色：必吃 */ }
+        .tag-spot { color: #3B82F6; font-weight: 500; /* 藍色：攻略/故事 */ }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'soft-bg': '#F8F6F4',
+                        'soft-card-bg': '#FFFFFF',
+                        'soft-accent': '#58a4b0',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <header class="card-bg px-6 py-4 flex justify-between items-center shadow-sm border-b soft-border z-10">
+        <div>
+            <h1 class="text-xl font-light tracking-wider soft-accent">旅程手帳</h1>
+            <p class="text-xs text-gray-500 font-light">Trip Log: 2025 Apr.</p>
+        </div>
+        <div class="text-right">
+            <div class="text-sm font-medium"><i class="fas fa-mountain soft-accent mr-1"></i>旅途模式</div>
+            <div class="text-xs text-gray-500">規劃中</div>
+        </div>
+    </header>
+
+    <main id="app-content" class="flex-1 overflow-y-auto hide-scrollbar p-4 pb-24">
+        </main>
+
+    <button id="fab-add" onclick="openEventModal(0, -1)" class="fixed bottom-20 right-5 bg-soft-accent text-white w-14 h-14 rounded-full shadow-lg hover:bg-[#4c8e98] transition z-30">
+        <i class="fas fa-plus text-xl"></i>
+    </button>
+
+    <nav class="fixed bottom-0 w-full card-bg border-t soft-border flex justify-around py-3 z-20 safe-area-bottom">
+        <button onclick="switchTab('itinerary')" id="btn-itinerary" class="flex flex-col items-center text-xs nav-active pt-2">
+            <i class="fas fa-route text-lg mb-1"></i> 行程
+        </button>
+        <button onclick="switchTab('info')" id="btn-info" class="flex flex-col items-center text-xs nav-inactive pt-2">
+            <i class="fas fa-book-open text-lg mb-1"></i> 筆記
+        </button>
+        <button onclick="switchTab('budget')" id="btn-budget" class="flex flex-col items-center text-xs nav-inactive pt-2">
+            <i class="fas fa-wallet text-lg mb-1"></i> 預算
+        </button>
+    </nav>
+    
+    <div id="eventModal" class="modal fixed inset-0 bg-black bg-opacity-30 z-50 flex justify-center items-end backdrop-blur-sm" style="display:none;">
+        <div class="card-bg w-full rounded-t-2xl p-6 shadow-2xl border-t soft-border transform transition-all translate-y-0 max-h-[85vh] overflow-y-auto">
+            <h2 id="modalTitle" class="text-xl font-bold mb-4 soft-accent">新增/修改 行程</h2>
+            <form id="eventForm" onsubmit="saveEvent(event)" class="space-y-4">
+                <input type="hidden" id="modal-day-index">
+                <input type="hidden" id="modal-event-index">
+                
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600">在哪一天？</span>
+                    <select id="modal-day-select" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent" required></select>
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600">時間</span>
+                    <input type="time" id="modal-time" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent" required>
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600">行程名稱/地點</span>
+                    <input type="text" id="modal-name" placeholder="例：清水寺 / 千房大阪燒" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent" required>
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600">行程類型</span>
+                    <select id="modal-type" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent" required>
+                        <option value="spot">景點</option>
+                        <option value="food">美食</option>
+                        <option value="transport">交通</option>
+                        <option value="stay">住宿</option>
+                        <option value="other">其他</option>
+                    </select>
+                </label>
+                
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600">預計活動持續時間 (選填)</span>
+                    <input type="text" id="modal-duration" placeholder="例：3h 或 1h 30m" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent">
+                </label>
+                
+                <h3 class="text-sm font-medium text-gray-600 mt-6 mb-2 pt-3 border-t soft-border">前往下個地點的交通資訊 (選填)</h3>
+
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600">交通方式</span>
+                    <select id="modal-transit-type" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent">
+                        <option value="">(不設定/無下個地點)</option>
+                        <option value="car">自駕/計程車</option>
+                        <option value="train">火車/地鐵</option>
+                        <option value="walk">步行</option>
+                        <option value="bus">巴士</option>
+                        <option value="plane">飛機</option>
+                    </select>
+                </label>
+                
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600">預計交通時間 (例：30m 或 1h 30m)</span>
+                    <input type="text" id="modal-transit-duration" placeholder="例：30m" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent">
+                </label>
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600">備註/攻略</span>
+                    <textarea id="modal-note" rows="3" placeholder="請填入攻略、必吃美食或預約代號" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent"></textarea>
+                </label>
+                
+                <div class="pt-2 flex space-x-3">
+                    <button type="button" onclick="closeModal('eventModal')" class="flex-1 py-3 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200 transition">取消</button>
+                    <button type="submit" class="flex-1 py-3 bg-soft-accent text-white rounded-lg font-bold hover:bg-[#4c8e98] transition">儲存行程</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="dayModal" class="modal fixed inset-0 bg-black bg-opacity-30 z-50 flex justify-center items-end backdrop-blur-sm" style="display:none;">
+        <div class="card-bg w-full rounded-t-2xl p-6 shadow-2xl border-t soft-border transform transition-all translate-y-0 max-h-[85vh] overflow-y-auto">
+            <h2 id="dayModalTitle" class="text-xl font-bold mb-4 soft-accent">管理旅遊天數</h2>
+            <form id="dayForm" onsubmit="saveDay(event)" class="space-y-4">
+                <input type="hidden" id="day-modal-index">
+
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600">日期標籤 (例: 4/1 (二))</span>
+                    <input type="text" id="day-modal-date" placeholder="請輸入日期" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent" required>
+                </label>
+
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600">天數標題 (例: 抵達與大阪市區)</span>
+                    <input type="text" id="day-modal-title" placeholder="請輸入標題" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent" required>
+                </label>
+                
+                <div class="pt-2 flex space-x-3">
+                    <button type="button" onclick="closeModal('dayModal')" class="flex-1 py-3 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200 transition">取消</button>
+                    <button type="submit" class="flex-1 py-3 bg-soft-accent text-white rounded-lg font-bold hover:bg-[#4c8e98] transition">儲存天數</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="infoModal" class="modal fixed inset-0 bg-black bg-opacity-30 z-50 flex justify-center items-end backdrop-blur-sm" style="display:none;">
+        <div class="card-bg w-full rounded-t-2xl p-6 shadow-2xl border-t soft-border transform transition-all translate-y-0 max-h-[85vh] overflow-y-auto">
+            <h2 class="text-xl font-bold mb-4 soft-accent">修改固定重要筆記</h2>
+            <form id="infoForm" onsubmit="saveInfoData(event)" class="space-y-4">
+                
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600"><i class="fas fa-plane mr-1 text-blue-500"></i>航班資訊</span>
+                    <textarea id="modal-info-flight" rows="2" placeholder="航班編號/時間/備註" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent"></textarea>
+                </label>
+                
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600"><i class="fas fa-hotel mr-1 text-green-500"></i>住宿資訊</span>
+                    <textarea id="modal-info-hotel" rows="3" placeholder="飯店名稱/地址/電話/預約號碼" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent"></textarea>
+                </label>
+
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600"><i class="fas fa-route mr-1 text-yellow-500"></i>交通/租車資訊</span>
+                    <textarea id="modal-info-transport" rows="3" placeholder="租車公司/鐵路周遊券/交通方式備註" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent"></textarea>
+                </label>
+                
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600"><i class="fas fa-phone mr-1 text-red-500"></i>緊急聯絡資訊</span>
+                    <textarea id="modal-info-emergency" rows="3" placeholder="緊急電話/保險公司/駐外機構" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent"></textarea>
+                </label>
+
+                <div class="pt-2 flex space-x-3">
+                    <button type="button" onclick="closeModal('infoModal')" class="flex-1 py-3 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200 transition">取消</button>
+                    <button type="submit" class="flex-1 py-3 bg-soft-accent text-white rounded-lg font-bold hover:bg-[#4c8e98] transition">儲存筆記</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="customNoteModal" class="modal fixed inset-0 bg-black bg-opacity-30 z-50 flex justify-center items-end backdrop-blur-sm" style="display:none;">
+        <div class="card-bg w-full rounded-t-2xl p-6 shadow-2xl border-t soft-border transform transition-all translate-y-0 max-h-[85vh] overflow-y-auto">
+            <h2 id="customNoteTitle" class="text-xl font-bold mb-4 soft-accent">新增自訂筆記</h2>
+            <form id="customNoteForm" onsubmit="saveCustomNote(event)" class="space-y-4">
+                <input type="hidden" id="modal-custom-note-id">
+                <input type="hidden" id="modal-custom-note-image-base64"> <label class="block">
+                    <span class="text-sm font-medium text-gray-600"><i class="fas fa-tag mr-1 text-purple-500"></i>筆記標題</span>
+                    <input type="text" id="modal-custom-note-title" placeholder="例：旅遊保險 / 網路漫遊設定" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent" required>
+                </label>
+                
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600"><i class="fas fa-image mr-1 text-purple-500"></i>附加照片 (選填)</span>
+                    <input type="file" id="modal-custom-note-image-file" accept="image/*" class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent" onchange="handleImageSelection(event)">
+                    <div id="image-preview-container" class="mt-2 hidden">
+                        <img id="image-preview" class="w-full h-auto rounded-lg shadow-md border" style="max-height: 200px; object-fit: cover;">
+                        <button type="button" onclick="removeImage()" class="mt-2 text-sm text-red-500 hover:text-red-700">移除照片</button>
+                    </div>
+                </label>
+                
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-600"><i class="fas fa-pencil-alt mr-1 text-purple-500"></i>筆記內容</span>
+                    <textarea id="modal-custom-note-content" rows="6" placeholder="詳細內容..." class="w-full mt-1 p-3 border soft-border rounded-lg card-bg focus:ring-soft-accent focus:border-soft-accent" required></textarea>
+                </label>
+
+                <div class="pt-2 flex space-x-3">
+                    <button type="button" onclick="closeModal('customNoteModal')" class="flex-1 py-3 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200 transition">取消</button>
+                    <button type="submit" class="flex-1 py-3 bg-soft-accent text-white rounded-lg font-bold hover:bg-[#4c8e98] transition">儲存筆記</button>
+                </div>
+                <button type="button" id="deleteCustomNoteBtn" onclick="deleteCustomNote()" class="w-full py-2 text-sm text-red-500 rounded-lg hover:bg-red-50 transition hidden">刪除此筆記</button>
+            </form>
+        </div>
+    </div>
+
+
+    <script>
+        // PWA Service Worker 註冊 (保持不變)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('./sw.js').then(function(registration) {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }, function(err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+        
+        // --- 1. 資料與儲存區 ---
+        let itineraryData = []; 
+        const STORAGE_KEY = 'travel_itinerary_data';
+        const BUDGET_KEY = 'travel_budget'; 
+        const INFO_KEY = 'travel_important_info'; 
+
+        // 筆記資料結構
+        let infoData = { 
+            flight: "JAL JL814 (TPE 09:00 - KIX 12:40)",
+            hotel: "京都三井飯店 (TEL: +81-75-468-3100)",
+            transport: "關西機場 (KIX) 取車。建議準備國際駕照。",
+            emergency: "日本救護車: 119 | 台灣駐日代表處: +81-3-3280-7811",
+            // 新增：自定義筆記陣列 (增加 imageBase64 欄位)
+            customNotes: [ 
+                { id: 1, title: "旅遊保險資訊", content: "保險公司: 富邦\n保單號碼: 9988-ABC-777\n緊急聯絡: +886-2-2706-0000", imageBase64: "" },
+                { id: 2, title: "必買藥妝清單", content: "合力他命 (金色)\nEVE止痛藥\nDHC護唇膏", imageBase64: "" }
+            ] 
+        };
+        let nextNoteId = 3; 
+
+        // 模擬資料 (保持不變)
+        const mockItinerary = [
+            {
+                day: 1, date: "4/1 (二)", title: "抵達與大阪市區", 
+                events: [
+                    { time: "10:30", type: "transport", name: "關西機場取車", note: "【重要預約代號】T-99821, Toyota Rent-a-Car", nav: "Kansai International Airport", duration: "1h", transitToNextType: "train", transitToNextDuration: "1h 30m" }, 
+                    { time: "12:00", type: "food", name: "千房大阪燒", note: "【必吃美食】道頓堀燒、半熟蛋炒麵。", nav: "Chibo Okonomiyaki Dotonbori", duration: "1h 30m", transitToNextType: "car", transitToNextDuration: "20m" },
+                    { time: "14:00", type: "spot", name: "大阪城公園", note: "豐臣秀吉的故事。建議搭乘御座船遊護城河。", nav: "Osaka Castle Park", duration: "20m", transitToNextType: "car", transitToNextDuration: "1h 30m" },
+                    { time: "18:00", type: "stay", name: "Hotel The Mitsui", note: "Check-in: 15:00後", nav: "Hotel The Mitsui Kyoto", duration: "1h 30m", transitToNextType: "", transitToNextDuration: "" }
+                ]
+            },
+            {
+                day: 2, date: "4/2 (三)", title: "京都古蹟巡禮", 
+                events: [
+                    { time: "09:00", type: "spot", name: "清水寺", note: "【攻略】早上9點前到避開人潮。仁王門是必拍打卡點。", nav: "Kiyomizu-dera", duration: "3h", transitToNextType: "walk", transitToNextDuration: "30m" },
+                    { time: "12:30", type: "food", name: "奧丹湯豆腐", note: "【必點菜單】傳統湯豆腐套餐。", nav: "Okutan Kiyomizu", duration: "1h", transitToNextType: "", transitToNextDuration: "" }
+                ]
+            }
+        ];
+
+        // 載入與儲存邏輯 (行程) - 保持不變
+        loadItinerary = () => {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) {
+                itineraryData = JSON.parse(data);
+            } else {
+                itineraryData = mockItinerary; 
+                saveItinerary();
+            }
+        };
+        saveItinerary = () => { localStorage.setItem(STORAGE_KEY, JSON.stringify(itineraryData)); };
+        
+        // 載入與儲存邏輯 (筆記) - 已更新 ID 處理
+        loadInfo = () => {
+            const data = localStorage.getItem(INFO_KEY);
+            if (data) {
+                infoData = JSON.parse(data);
+                // 計算 next ID
+                if (infoData.customNotes && infoData.customNotes.length > 0) {
+                    const maxId = infoData.customNotes.reduce((max, note) => Math.max(max, note.id || 0), 0);
+                    nextNoteId = maxId + 1;
+                }
+            } else {
+                saveInfo(); 
+            }
+        };
+        saveInfo = () => { localStorage.setItem(INFO_KEY, JSON.stringify(infoData)); };
+
+        // 文字亮顯輔助函數 (保持不變)
+        function highlightKeywords(text) {
+            if (!text) return '';
+            text = text.replace(/【重要預約代號】(.*?)(\.|$)/g, '<span class="tag-important">[代號] $1</span>$2');
+            text = text.replace(/【必吃美食】(.*?)(\.|$)/g, '<span class="tag-food">[美食] $1</span>$2');
+            text = text.replace(/【必點菜單】(.*?)(\.|$)/g, '<span class="tag-food">[菜單] $1</span>$2');
+            text = text.replace(/【必買伴手禮】(.*?)(\.|$)/g, '<span class="tag-food">[伴手禮] $1</span>$2');
+            text = text.replace(/【攻略】(.*?)(\.|$)/g, '<span class="tag-spot">[攻略] $1</span>$2');
+            return text;
+        }
+
+        // --- 2. 介面控制與渲染邏輯 ---
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            loadItinerary();
+            loadInfo(); 
+            renderItinerary();
+            loadBudget();
+        });
+        
+        // 統一關閉 Modal 函數 (保持不變)
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+        
+        // 切換 Tab (保持不變)
+        function switchTab(tabName) {
+            ['itinerary', 'info', 'budget'].forEach(t => {
+                const btn = document.getElementById(`btn-${t}`);
+                if (t === tabName) {
+                    btn.classList.replace('nav-inactive', 'nav-active');
+                } else {
+                    btn.classList.replace('nav-active', 'nav-inactive');
+                }
+            });
+
+            const contentDiv = document.getElementById('app-content');
+            contentDiv.innerHTML = ''; 
+
+            if (tabName === 'itinerary') renderItinerary();
+            else if (tabName === 'info') renderInfo();
+            else if (tabName === 'budget') renderBudget();
+        }
+
+        // 填充 Modal 中的日期選擇器 (保持不變)
+        function populateDaySelect() {
+            const select = document.getElementById('modal-day-select');
+            select.innerHTML = '';
+            itineraryData.forEach((day, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = `DAY ${day.day}: ${day.title}`;
+                select.appendChild(option);
+            });
+        }
+        
+        // 初始化 SortableJS 拖曳模組 (保持不變)
+        function initSortable() {
+            document.querySelectorAll('.events-list').forEach(list => {
+                new Sortable(list, {
+                    group: 'itinerary',
+                    animation: 150,
+                    handle: '.fa-grip-vertical',
+                    onEnd: function (evt) {
+                        const oldDayIndex = parseInt(evt.from.id.replace('day-events-', ''));
+                        const newDayIndex = parseInt(evt.to.id.replace('day-events-', ''));
+                        const oldEventIndex = evt.oldIndex;
+                        const newEventIndex = evt.newIndex;
+                        const movedEvent = JSON.parse(JSON.stringify(itineraryData[oldDayIndex].events[oldEventIndex]));
+
+                        itineraryData[oldDayIndex].events.splice(oldEventIndex, 1);
+                        itineraryData[newDayIndex].events.splice(newEventIndex, 0, movedEvent);
+
+                        saveItinerary();
+                        renderItinerary();
+                    },
+                });
+            });
+        }
+
+        // 渲染行程 (保持不變)
+        function renderItinerary() {
+            const container = document.getElementById('app-content');
+            let html = `
+                <div class="p-3 mb-6 card-bg border soft-border rounded-xl shadow-md flex justify-between items-center sticky top-0 z-10">
+                    <span class="text-sm font-medium text-gray-600">行程共：<span class="soft-accent">${itineraryData.length}</span> 日</span>
+                    <button onclick="openDayModal(-1)" class="text-xs text-white font-bold px-3 py-1 rounded-full bg-soft-accent hover:bg-[#4c8e98] transition">
+                        <i class="fas fa-calendar-plus mr-1"></i> 管理天數
+                    </button>
+                </div>
+                <div class="space-y-4">
+            `;
+
+            itineraryData.forEach((day, dayIndex) => {
+                html += `
+                    <div>
+                        <div class="flex items-center justify-between mb-3 sticky top-16 bg-soft-bg py-2 z-5">
+                            <div class="flex items-center">
+                                <span class="bg-gray-700 text-white text-xs px-2 py-1 rounded-sm mr-2 font-medium">DAY ${day.day}</span>
+                                <h2 class="text-lg font-bold">${day.date} ${day.title}</h2>
+                                <span class="text-sm text-gray-500 ml-3"><i class="fas fa-cloud-sun text-yellow-500 mr-1"></i>晴/18°C</span>
+                            </div>
+                            <div class="flex space-x-2 text-gray-400">
+                                <button onclick="openDayModal(${dayIndex})" class="hover:text-gray-600"><i class="fas fa-edit text-sm"></i></button>
+                                <button onclick="deleteDay(${dayIndex})" class="hover:text-red-500"><i class="fas fa-trash-alt text-sm"></i></button>
+                            </div>
+                        </div>
+                        <div class="space-y-4 pl-4 border-l-2 soft-border ml-2 events-list" id="day-events-${dayIndex}">
+                `;
+
+                day.events.forEach((event, eventIndex) => {
+                    let icon = 'fa-map-marker-alt';
+                    let tagColor = 'bg-gray-100 text-gray-600';
+                    let accentColor = 'border-gray-300';
+
+                    if (event.type === 'food') { icon = 'fa-utensils'; tagColor = 'bg-red-50 text-red-600'; accentColor = 'border-red-400'; }
+                    else if (event.type === 'transport') { icon = 'fa-car'; tagColor = 'bg-blue-50 text-blue-600'; accentColor = 'border-blue-400'; }
+                    else if (event.type === 'stay') { icon = 'fa-bed'; tagColor = 'bg-green-50 text-green-600'; accentColor = 'border-green-400'; }
+                    else if (event.type === 'spot') { icon = 'fa-camera'; tagColor = 'bg-yellow-50 text-yellow-600'; accentColor = 'border-yellow-400'; }
+
+                    // === 1. 渲染行程卡片 ===
+                    html += `
+                        <div class="card-bg p-5 rounded-xl shadow-lg relative ml-4 border-l-4 ${accentColor} cursor-move">
+                            <i class="fas fa-grip-vertical absolute left-[-15px] top-1/2 -translate-y-1/2 text-gray-400 hover:text-soft-accent cursor-move"></i>
+                            
+                            <div class="absolute top-3 right-3 flex space-x-2 text-gray-400">
+                                <button onclick="openEventModal(${dayIndex}, ${eventIndex})" class="hover:text-gray-600 transition">
+                                    <i class="fas fa-edit text-sm"></i>
+                                </button>
+                                <button onclick="deleteEvent(${dayIndex}, ${eventIndex})" class="hover:text-red-500 transition">
+                                    <i class="fas fa-trash-alt text-sm"></i>
+                                </button>
+                            </div>
+                            <div class="flex items-center mb-2">
+                                <span class="text-base font-medium mr-3 text-gray-700">${event.time}</span>
+                                <span class="text-xs px-2 py-0.5 rounded-full ${tagColor} mr-2"><i class="fas ${icon} text-xs mr-1"></i>${event.type.toUpperCase()}</span>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800 mb-2">${event.name}</h3>
+
+                            ${event.duration ? `
+                                <div class="flex items-center text-sm text-gray-500 mb-3">
+                                    <i class="fas fa-hourglass-half mr-2 text-soft-accent"></i> 預計停留時間: <span class="font-bold ml-1">${event.duration}</span>
+                                </div>
+                            ` : ''}
+
+                            <p class="text-base text-gray-600 mb-4 leading-relaxed border-t border-gray-100 pt-3">${highlightKeywords(event.note)}</p>
+                            
+                            <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.name)}" target="_blank" 
+                               class="inline-flex items-center text-sm text-white px-4 py-2 rounded-lg bg-soft-accent hover:bg-[#4c8e98] transition font-medium">
+                                <i class="fas fa-location-arrow mr-2"></i> 導航去這裡
+                            </a>
+                        </div>
+                    `;
+                    
+                    // === 2. 渲染交通銜接模塊 ===
+                    if (event.transitToNextDuration && event.transitToNextType) {
+                        const transit = getTransitInfo(event.transitToNextType);
+                        const transitIcon = transit.icon;
+                        const transitLabel = transit.label;
+                        const transitTime = event.transitToNextDuration;
+                        
+                        html += `
+                            <div class="flex items-center ml-4 my-2">
+                                <div class="w-6 flex flex-col items-center flex-shrink-0">
+                                    <div class="h-4 w-0.5 bg-gray-300"></div>
+                                    <i class="fas ${transitIcon} text-soft-accent text-sm p-1 rounded-full bg-soft-bg border-2 border-soft-accent shadow"></i>
+                                    <div class="h-4 w-0.5 bg-gray-300"></div>
+                                </div>
+                                
+                                <div class="flex-1 card-bg rounded-lg p-3 text-sm flex items-center justify-between ml-2 border soft-border shadow-sm">
+                                    <div class="flex items-center text-gray-600">
+                                        <i class="fas fa-clock mr-2 text-soft-accent"></i> 
+                                        預計 ${transitLabel}：<span class="font-bold ml-1">${transitTime}</span>
+                                    </div>
+                                    <span class="text-xs text-gray-400"> (修改請編輯上方行程) </span>
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                });
+
+                html += `</div></div>`;
+            });
+            html += `</div>`;
+            container.innerHTML = html;
+            populateDaySelect(); 
+            initSortable(); 
+        }
+
+        // 渲染資訊頁 (已修改，增加自訂筆記和新增按鈕)
+        function renderInfo() {
+            const container = document.getElementById('app-content');
+            
+            // 渲染自訂筆記列表
+            let customNotesHtml = (infoData.customNotes || []).map(note => `
+                <div class="card-bg p-5 rounded-xl shadow-lg border-l-4 border-purple-500 whitespace-pre-line relative">
+                    <div class="absolute top-3 right-3 flex space-x-2 text-gray-400">
+                        <button onclick="openCustomNoteModal(${note.id})" class="hover:text-gray-600 transition">
+                            <i class="fas fa-edit text-sm"></i>
+                        </button>
+                    </div>
+                    <h3 class="font-bold text-gray-800 mb-3"><i class="fas fa-tag mr-2 text-purple-500"></i>${note.title}</h3>
+                    
+                    ${note.imageBase64 ? `
+                        <img src="${note.imageBase64}" class="w-full h-auto rounded-lg shadow-md mb-3 border" style="max-height: 300px; object-fit: contain;">
+                    ` : ''}
+                    
+                    <p class="text-sm text-gray-600 font-light">${note.content}</p>
+                </div>
+            `).join('');
+
+            container.innerHTML = `
+                <div class="flex justify-between items-center mb-6 flex-wrap">
+                    <h2 class="text-2xl font-bold soft-accent mb-2 w-full sm:w-auto">旅途重要筆記</h2>
+                    <div class="flex space-x-2">
+                        <input type="file" id="importFile" accept=".json,.jptrip" style="display:none;" onchange="importData(event)">
+                        <button onclick="document.getElementById('importFile').click()" class="text-xs text-white font-bold px-3 py-1 rounded-full bg-gray-500 hover:bg-gray-600 transition">
+                            <i class="fas fa-file-import mr-1"></i> 匯入
+                        </button>
+                        <button onclick="exportData()" class="text-xs text-white font-bold px-3 py-1 rounded-full bg-gray-700 hover:bg-gray-800 transition">
+                            <i class="fas fa-file-export mr-1"></i> 匯出
+                        </button>
+                        <button onclick="openInfoModal()" class="text-xs text-white font-bold px-3 py-1 rounded-full bg-soft-accent hover:bg-[#4c8e98] transition">
+                            <i class="fas fa-edit mr-1"></i> 編輯固定筆記
+                        </button>
+                    </div>
+                </div>
+                
+                <h3 class="text-lg font-bold text-gray-700 mb-3"><i class="fas fa-map-marker-alt mr-2 text-soft-accent"></i> 固定資訊</h3>
+                
+                <div class="space-y-4 mb-8">
+                    <div class="card-bg p-5 rounded-xl shadow-lg border-l-4 border-blue-400 whitespace-pre-line">
+                        <h3 class="font-bold text-gray-800 mb-3"><i class="fas fa-plane mr-2 text-blue-500"></i>航班資訊</h3>
+                        <p class="text-sm text-gray-600 font-light">${infoData.flight || '（尚未填寫）'}</p>
+                    </div>
+                    
+                    <div class="card-bg p-5 rounded-xl shadow-lg border-l-4 border-green-400 whitespace-pre-line">
+                        <h3 class="font-bold text-gray-800 mb-3"><i class="fas fa-hotel mr-2 text-green-500"></i>住宿資訊</h3>
+                        <p class="text-sm text-gray-600 font-light">${infoData.hotel || '（尚未填寫）'}</p>
+                    </div>
+
+                    <div class="card-bg p-5 rounded-xl shadow-lg border-l-4 border-yellow-500 whitespace-pre-line">
+                        <h3 class="font-bold text-gray-800 mb-3"><i class="fas fa-route mr-2 text-yellow-500"></i>交通/租車資訊</h3>
+                        <p class="text-sm text-gray-600 font-light">${infoData.transport || '（尚未填寫）'}</p>
+                    </div>
+                    
+                    <div class="card-bg p-5 rounded-xl shadow-lg border-l-4 border-red-400 whitespace-pre-line">
+                        <h3 class="font-bold text-gray-800 mb-3"><i class="fas fa-phone mr-2 text-red-500"></i>緊急聯絡</h3>
+                        <p class="text-sm text-gray-600 font-light">${infoData.emergency || '（尚未填寫）'}</p>
+                    </div>
+                </div>
+
+                <div class="flex justify-between items-center mb-4 pt-4 border-t soft-border">
+                    <h3 class="text-lg font-bold text-gray-700"><i class="fas fa-clipboard-list mr-2 text-purple-500"></i> 自訂備註</h3>
+                    <button onclick="openCustomNoteModal(0)" class="text-xs text-white font-bold px-3 py-1 rounded-full bg-purple-500 hover:bg-purple-600 transition">
+                        <i class="fas fa-plus mr-1"></i> 新增筆記
+                    </button>
+                </div>
+                
+                <div class="space-y-4">
+                    ${customNotesHtml || '<p class="text-center text-gray-400 py-6 card-bg rounded-xl shadow-sm border">:: 點擊上方按鈕新增自訂筆記 ::</p>'}
+                </div>
+            `;
+        }
+
+        // 渲染記帳頁 (保持不變)
+        function renderBudget() {
+            const container = document.getElementById('app-content');
+            const records = JSON.parse(localStorage.getItem(BUDGET_KEY)) || [];
+            const total = records.reduce((sum, item) => sum + parseInt(item.amount), 0);
+
+            let listHtml = records.map((item, index) => `
+                <div class="flex justify-between items-center py-3 border-b border-gray-100 last:border-0">
+                    <div>
+                        <div class="font-medium text-gray-800">${item.title}</div>
+                        <div class="text-xs text-gray-500">${item.date}</div>
+                    </div>
+                    <div class="font-bold text-lg text-gray-700">¥${item.amount}</div>
+                </div>
+            `).join('');
+
+            container.innerHTML = `
+                <h2 class="text-2xl font-bold mb-6 soft-accent">預算與支出</h2>
+
+                <div class="bg-white p-6 rounded-xl shadow-lg mb-6 border-b border-soft-accent/50">
+                    <div class="text-sm text-gray-500 mb-1">總花費估算 (JPY)</div>
+                    <div class="text-4xl font-bold text-gray-800">${total.toLocaleString()} <span class="text-lg text-soft-accent">¥</span></div>
+                </div>
+
+                <div class="card-bg p-5 rounded-xl shadow-xl mb-6">
+                    <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-plus-circle mr-2 text-soft-accent"></i>紀錄新支出</h3>
+                    <form onsubmit="addBudget(event)" class="space-y-3">
+                        <input type="text" id="b-title" placeholder="項目 (例: 晚餐/過路費)" class="w-full bg-gray-50 p-3 rounded border soft-border focus:ring-soft-accent focus:border-soft-accent" required>
+                        <input type="number" id="b-amount" placeholder="金額 (日幣)" class="w-full bg-gray-50 p-3 rounded border soft-border focus:ring-soft-accent focus:border-soft-accent" required>
+                        <button type="submit" class="w-full bg-soft-accent text-white py-3 rounded font-bold hover:bg-[#4c8e98] transition">確定紀錄</button>
+                    </form>
+                </div>
+
+                <div class="card-bg p-5 rounded-xl shadow-xl">
+                    <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-list-alt mr-2 text-gray-500"></i>交易明細</h3>
+                    <div>${listHtml || '<p class="text-center text-gray-400 py-4">:: 目前沒有支出紀錄 ::</p>'}</div>
+                    ${records.length > 0 ? `<button onclick="clearBudget()" class="w-full text-center text-sm text-red-500 mt-4 hover:text-red-400">清除所有紀錄</button>` : ''}
+                </div>
+            `;
+        }
+        
+        // --- 3. 固定筆記 CRUD 邏輯 (保持不變) ---
+        
+        // 開啟固定筆記編輯 Modal
+        openInfoModal = () => {
+            document.getElementById('modal-info-flight').value = infoData.flight;
+            document.getElementById('modal-info-hotel').value = infoData.hotel;
+            document.getElementById('modal-info-transport').value = infoData.transport;
+            document.getElementById('modal-info-emergency').value = infoData.emergency;
+            document.getElementById('infoModal').style.display = 'flex';
+        };
+
+        // 儲存固定筆記
+        saveInfoData = (e) => {
+            e.preventDefault();
+            infoData.flight = document.getElementById('modal-info-flight').value;
+            infoData.hotel = document.getElementById('modal-info-hotel').value;
+            infoData.transport = document.getElementById('modal-info-transport').value;
+            infoData.emergency = document.getElementById('modal-info-emergency').value;
+            
+            saveInfo();
+            renderInfo();
+            closeModal('infoModal');
+        };
+        
+        // --- 4. 自訂筆記 CRUD 邏輯 (已更新圖片) ---
+
+        // 處理圖片選擇與轉換為 Base64
+        handleImageSelection = (event) => {
+            const file = event.target.files[0];
+            const previewContainer = document.getElementById('image-preview-container');
+            const preview = document.getElementById('image-preview');
+            const base64Input = document.getElementById('modal-custom-note-image-base64');
+            
+            if (file && file.type.startsWith('image/')) {
+                if (file.size > 5 * 1024 * 1024) { // 限制圖片大小 (5MB)，避免 localStorage 溢位
+                    alert('圖片檔案過大，請選擇小於 5MB 的圖片。');
+                    removeImage();
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    preview.src = e.target.result;
+                    base64Input.value = e.target.result; // Store Base64 string
+                    previewContainer.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            } else {
+                removeImage();
+            }
+        };
+
+        // 移除圖片
+        removeImage = () => {
+            document.getElementById('modal-custom-note-image-file').value = '';
+            document.getElementById('modal-custom-note-image-base64').value = '';
+            document.getElementById('image-preview-container').classList.add('hidden');
+            document.getElementById('image-preview').src = '';
+        };
+        
+        // 開啟自定義筆記編輯 Modal (更新)
+        openCustomNoteModal = (noteId) => {
+            const modal = document.getElementById('customNoteModal');
+            const deleteBtn = document.getElementById('deleteCustomNoteBtn');
+            document.getElementById('modal-custom-note-id').value = noteId;
+            
+            removeImage(); // 先清空預覽與 Base64 資料
+
+            if (noteId > 0) {
+                document.getElementById('customNoteTitle').textContent = '修改自訂筆記';
+                const note = infoData.customNotes.find(n => n.id === noteId);
+                if (note) {
+                    document.getElementById('modal-custom-note-title').value = note.title;
+                    document.getElementById('modal-custom-note-content').value = note.content;
+                    deleteBtn.classList.remove('hidden');
+
+                    // 載入圖片
+                    if (note.imageBase64) {
+                        document.getElementById('modal-custom-note-image-base64').value = note.imageBase64;
+                        document.getElementById('image-preview').src = note.imageBase64;
+                        document.getElementById('image-preview-container').classList.remove('hidden');
+                    }
+                }
+            } else {
+                document.getElementById('customNoteTitle').textContent = '新增自訂筆記';
+                document.getElementById('customNoteForm').reset();
+                deleteBtn.classList.add('hidden');
+            }
+            modal.style.display = 'flex';
+        };
+
+        // 儲存自定義筆記 (更新)
+        saveCustomNote = (e) => {
+            e.preventDefault();
+            const noteId = parseInt(document.getElementById('modal-custom-note-id').value);
+            const title = document.getElementById('modal-custom-note-title').value;
+            const content = document.getElementById('modal-custom-note-content').value;
+            const imageBase64 = document.getElementById('modal-custom-note-image-base64').value; // 獲取 Base64
+
+            if (noteId > 0) {
+                // Edit existing note
+                const index = infoData.customNotes.findIndex(n => n.id === noteId);
+                if (index !== -1) {
+                    infoData.customNotes[index].title = title;
+                    infoData.customNotes[index].content = content;
+                    infoData.customNotes[index].imageBase64 = imageBase64; // 儲存 Base64
+                }
+            } else {
+                // Add new note
+                infoData.customNotes.push({
+                    id: nextNoteId++,
+                    title: title,
+                    content: content,
+                    imageBase64: imageBase64 // 儲存 Base64
+                });
+            }
+            
+            saveInfo();
+            renderInfo();
+            closeModal('customNoteModal');
+        };
+
+        // 刪除自定義筆記 (保持不變)
+        deleteCustomNote = () => {
+            const noteId = parseInt(document.getElementById('modal-custom-note-id').value);
+            if (noteId > 0 && confirm('確定要刪除此自訂筆記嗎？')) {
+                infoData.customNotes = infoData.customNotes.filter(n => n.id !== noteId);
+                saveInfo();
+                renderInfo();
+                closeModal('customNoteModal');
+            }
+        };
+
+        // --- 5. 檔案匯入/匯出功能 (新增) ---
+        
+        // 匯出所有資料 (行程、筆記、預算)
+        exportData = () => {
+            const dataToExport = {
+                itinerary: JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'),
+                info: JSON.parse(localStorage.getItem(INFO_KEY) || '{}'),
+                budget: JSON.parse(localStorage.getItem(BUDGET_KEY) || '[]'),
+                exportDate: new Date().toISOString()
+            };
+
+            const jsonString = JSON.stringify(dataToExport, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            
+            const a = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            
+            // 檔名格式: JPTrip-YYYYMMDD.jptrip
+            const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+            a.download = `JPTrip-${date}.jptrip`; 
+            a.href = url;
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            // 提示使用者
+            alert('旅程資料已匯出！請妥善保存 JPTrip 檔案。\n匯出的檔案包含所有行程、筆記和預算資料。');
+        };
+
+        // 匯入資料 (讀取 JSON 檔案)
+        importData = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (confirm(`確定要匯入檔案「${file.name}」嗎？\n這將會覆蓋您現有的行程、筆記和預算資料！`)) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+
+                        if (importedData.itinerary && importedData.info && importedData.budget) {
+                            localStorage.setItem(STORAGE_KEY, JSON.stringify(importedData.itinerary));
+                            localStorage.setItem(INFO_KEY, JSON.stringify(importedData.info));
+                            localStorage.setItem(BUDGET_KEY, JSON.stringify(importedData.budget));
+                            
+                            // 重新載入並渲染
+                            loadItinerary();
+                            loadInfo();
+                            loadBudget();
+                            
+                            // 保持在筆記頁面
+                            switchTab('info');
+
+                            alert('資料匯入成功！您的行程、筆記和預算已更新。');
+                        } else {
+                            alert('匯入失敗：檔案格式不正確，缺少行程、筆記或預算欄位。');
+                        }
+                    } catch (error) {
+                        console.error('JSON解析錯誤:', error);
+                        alert('匯入失敗：檔案內容無法解析為有效的 JSON 格式。');
+                    }
+                };
+                reader.readAsText(file);
+            }
+        };
+
+        // --- 6. 記帳 CRUD 邏輯 (保持不變) ---
+        
+        loadBudget = () => {
+            const records = JSON.parse(localStorage.getItem(BUDGET_KEY)) || [];
+            localStorage.setItem(BUDGET_KEY, JSON.stringify(records));
+        };
+        addBudget = (e) => {
+            e.preventDefault();
+            const title = document.getElementById('b-title').value;
+            const amount = document.getElementById('b-amount').value;
+            const records = JSON.parse(localStorage.getItem(BUDGET_KEY)) || [];
+            records.unshift({ title: title, amount: amount, date: new Date().toLocaleDateString() });
+            localStorage.setItem(BUDGET_KEY, JSON.stringify(records));
+            renderBudget(); 
+        };
+        clearBudget = () => {
+            if(confirm('警告：確定要刪除所有記帳紀錄嗎？')) {
+                localStorage.removeItem(BUDGET_KEY);
+                renderBudget();
+            }
+        };
+
+        // --- 7. 行程 CRUD 邏輯 (保持不變) ---
+        
+        openDayModal = (dayIndex) => {
+            const modal = document.getElementById('dayModal');
+            document.getElementById('day-modal-index').value = dayIndex;
+            if (dayIndex !== -1) {
+                document.getElementById('dayModalTitle').textContent = '修改天數';
+                const day = itineraryData[dayIndex];
+                document.getElementById('day-modal-date').value = day.date;
+                document.getElementById('day-modal-title').value = day.title;
+            } else {
+                document.getElementById('dayModalTitle').textContent = '新增旅遊天數';
+                document.getElementById('dayForm').reset();
+            }
+            modal.style.display = 'flex';
+        };
+        saveDay = (e) => {
+            e.preventDefault();
+            const dayIndex = parseInt(document.getElementById('day-modal-index').value);
+            const newDate = document.getElementById('day-modal-date').value;
+            const newTitle = document.getElementById('day-modal-title').value;
+            if (dayIndex === -1) {
+                itineraryData.push({ day: itineraryData.length + 1, date: newDate, title: newTitle, events: [] });
+            } else {
+                itineraryData[dayIndex].date = newDate;
+                itineraryData[dayIndex].title = newTitle;
+            }
+            renumberDays();
+            saveItinerary();
+            renderItinerary();
+            closeModal('dayModal');
+        };
+        deleteDay = (dayIndex) => {
+            const dayTitle = itineraryData[dayIndex].title;
+            const eventCount = itineraryData[dayIndex].events.length;
+            if (confirm(`警告：確定要刪除「${dayTitle}」這一整天行程嗎？\n(將會同時刪除 ${eventCount} 個事件！)`)) {
+                itineraryData.splice(dayIndex, 1);
+                renumberDays();
+                saveItinerary();
+                renderItinerary();
+            }
+        };
+        renumberDays = () => {
+            itineraryData.forEach((day, index) => { day.day = index + 1; });
+        };
+        
+        openEventModal = (dayIndex, eventIndex) => {
+            const modal = document.getElementById('eventModal');
+            const form = document.getElementById('eventForm');
+            document.getElementById('modal-day-index').value = dayIndex;
+            document.getElementById('modal-event-index').value = eventIndex;
+            
+            if (eventIndex !== -1) {
+                document.getElementById('modalTitle').textContent = '修改行程';
+                const event = itineraryData[dayIndex].events[eventIndex];
+                document.getElementById('modal-day-select').value = dayIndex;
+                document.getElementById('modal-time').value = event.time;
+                document.getElementById('modal-name').value = event.name;
+                document.getElementById('modal-type').value = event.type;
+                document.getElementById('modal-note').value = event.note;
+                document.getElementById('modal-duration').value = event.duration || ''; 
+                document.getElementById('modal-transit-type').value = event.transitToNextType || '';
+                document.getElementById('modal-transit-duration').value = event.transitToNextDuration || '';
+            } else {
+                document.getElementById('modalTitle').textContent = '新增行程';
+                form.reset();
+                document.getElementById('modal-day-select').value = dayIndex; 
+                document.getElementById('modal-duration').value = '';
+                document.getElementById('modal-transit-type').value = '';
+                document.getElementById('modal-transit-duration').value = '';
+            }
+            modal.style.display = 'flex';
+        };
+        
+        saveEvent = (e) => {
+            e.preventDefault();
+            const dayIndex = parseInt(document.getElementById('modal-day-index').value);
+            const eventIndex = parseInt(document.getElementById('modal-event-index').value);
+            const selectedDayIndex = parseInt(document.getElementById('modal-day-select').value);
+
+            const newEvent = {
+                time: document.getElementById('modal-time').value,
+                type: document.getElementById('modal-type').value,
+                name: document.getElementById('modal-name').value,
+                note: document.getElementById('modal-note').value,
+                nav: document.getElementById('modal-name').value,
+                duration: document.getElementById('modal-duration').value || "",
+                transitToNextType: document.getElementById('modal-transit-type').value || "",
+                transitToNextDuration: document.getElementById('modal-transit-duration').value || ""
+            };
+
+            if (eventIndex === -1) {
+                itineraryData[selectedDayIndex].events.push(newEvent);
+            } else {
+                if (dayIndex !== selectedDayIndex) {
+                    itineraryData[dayIndex].events.splice(eventIndex, 1);
+                    itineraryData[selectedDayIndex].events.push(newEvent);
+                } else {
+                    itineraryData[dayIndex].events[eventIndex] = newEvent;
+                }
+            }
+            saveItinerary();
+            renderItinerary();
+            closeModal('eventModal');
+        };
+        deleteEvent = (dayIndex, eventIndex) => {
+            if (confirm('確定要刪除此行程嗎？')) {
+                itineraryData[dayIndex].events.splice(eventIndex, 1);
+                saveItinerary();
+                renderItinerary();
+            }
+        };
+        
+        // 交通資訊輔助函數 (保持不變)
+        const TRANSIT_OPTIONS = [
+            { value: 'car', label: '自駕/計程車', icon: 'fa-car' },
+            { value: 'train', label: '火車/地鐵', icon: 'fa-train-subway' },
+            { value: 'walk', label: '步行', icon: 'fa-person-walking' },
+            { value: 'bus', label: '巴士', icon: 'fa-bus' },
+            { value: 'plane', label: '飛機', icon: 'fa-plane' },
+        ];
+        function getTransitInfo(type) {
+            return TRANSIT_OPTIONS.find(o => o.value === type) || { icon: 'fa-route', label: '交通銜接' };
+        }
+    </script>
+</body>
+</html>
